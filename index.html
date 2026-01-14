@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE FATES WEAVE</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Georgia', serif;
+        }
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        #prediction {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 1s ease;
+            pointer-events: none;
+        }
+        #prediction.visible { opacity: 1; }
+        #prediction .regime {
+            font-size: 11px;
+            letter-spacing: 8px;
+            color: rgba(0, 163, 217, 0.7);
+            margin-bottom: 20px;
+        }
+        #prediction .value {
+            font-size: 80px;
+            font-weight: 300;
+            font-family: 'Georgia', serif;
+        }
+        #prediction .value.normal { color: #7cb587; }
+        #prediction .value.elevated { color: #00a3d9; }
+        #prediction .value.stressed { color: #c17f59; }
+        #prediction .value.critical { color: #a65d57; }
+        #prediction .state {
+            font-size: 13px;
+            letter-spacing: 5px;
+            margin: 15px 0 25px;
+        }
+        #prediction .direction {
+            font-size: 16px;
+            color: rgba(200,200,200,0.6);
+            letter-spacing: 3px;
+        }
+        #start {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: none;
+            border: 1px solid rgba(0, 163, 217, 0.3);
+            color: rgba(200,200,200,0.6);
+            padding: 18px 50px;
+            font-size: 11px;
+            letter-spacing: 5px;
+            cursor: pointer;
+            z-index: 200;
+            font-family: 'Georgia', serif;
+            transition: all 0.3s ease;
+        }
+        #start:hover {
+            border-color: rgba(0, 163, 217, 0.6);
+            color: rgba(200,200,200,0.9);
+        }
+        #start.hidden { display: none; }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    
+    <div id="prediction">
+        <div class="regime" id="regime">BITCOIN</div>
+        <div class="value elevated" id="value">43</div>
+        <div class="state" id="state" style="color:#00a3d9">ELEVATED</div>
+        <div class="direction" id="direction">↑ INCREASING</div>
+    </div>
+    
+    <button id="start">AWAKEN</button>
+
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        
+        let W, H;
+        
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+            initThreads();
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BACKGROUND THREAD — thin, silver, everywhere
+        // ═══════════════════════════════════════════════════════════════
+        
+        class Thread {
+            constructor(x) {
+                this.baseX = x;
+                this.x = x;
+                this.tension = 0.3 + Math.random() * 0.7;
+                this.wobbleAmp = 0.3 + Math.random() * 1.5;
+                this.wobbleFreq = 2 + Math.random() * 3;
+                this.phase = Math.random() * Math.PI * 2;
+                this.phaseSpeed = 0.003 + Math.random() * 0.008;
+                this.baseAlpha = 0.01 + Math.random() * 0.035;
+                this.cp1Offset = (Math.random() - 0.5) * 6;
+                this.cp2Offset = (Math.random() - 0.5) * 6;
+            }
+            
+            update() {
+                this.phase += this.phaseSpeed;
+            }
+            
+            draw() {
+                const wobble = Math.sin(this.phase * this.wobbleFreq) * this.wobbleAmp;
+                
+                const x1 = this.x + wobble;
+                const x2 = this.x - wobble;
+                const cp1x = this.x + this.cp1Offset + wobble * 0.5;
+                const cp2x = this.x + this.cp2Offset - wobble * 0.5;
+                
+                const shimmer = Math.sin(this.phase) * 0.015;
+                const alpha = this.baseAlpha + shimmer;
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, 0);
+                ctx.bezierCurveTo(cp1x, H * 0.33, cp2x, H * 0.66, x2, H);
+                ctx.strokeStyle = `rgba(195, 195, 205, ${alpha})`;
+                ctx.lineWidth = 0.3 + this.tension * 0.2;
+                ctx.stroke();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // FATE THREAD — the three that come together
+        // ═══════════════════════════════════════════════════════════════
+        
+        class FateThread {
+            constructor(startX, id) {
+                this.id = id;
+                this.startX = startX;
+                this.x = startX;
+                this.targetX = W / 2;
+                this.progress = 0;
+                this.active = false;
+                this.intensity = 0;
+                this.wobblePhase = Math.random() * Math.PI * 2;
+            }
+            
+            activate() {
+                this.active = true;
+                this.progress = 0;
+                this.x = this.startX;
+                this.intensity = 0;
+            }
+            
+            update() {
+                if (!this.active) {
+                    this.intensity = Math.max(0, this.intensity - 0.02);
+                    return;
+                }
+                
+                this.progress = Math.min(1, this.progress + 0.008);
+                this.intensity = Math.min(1, this.intensity + 0.025);
+                this.wobblePhase += 0.05;
+                
+                // Ease toward center
+                const ease = this.progress * this.progress * (3 - 2 * this.progress);
+                this.x = this.startX + (this.targetX - this.startX) * ease;
+            }
+            
+            draw() {
+                if (this.intensity <= 0) return;
+                
+                const wobble = Math.sin(this.wobblePhase) * (3 - this.progress * 2.5);
+                
+                // CERULEAN: rgb(0, 163, 217)
+                const alpha = this.intensity * 0.9;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x + wobble, 0);
+                ctx.bezierCurveTo(
+                    this.x + wobble * 0.7, H * 0.33,
+                    this.x - wobble * 0.7, H * 0.66,
+                    this.x - wobble, H
+                );
+                
+                ctx.strokeStyle = `rgba(0, 163, 217, ${alpha})`;
+                ctx.lineWidth = 1 + this.intensity * 1.5;
+                
+                ctx.shadowBlur = 15 * this.intensity;
+                ctx.shadowColor = `rgba(0, 163, 217, ${this.intensity * 0.8})`;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // INIT
+        // ═══════════════════════════════════════════════════════════════
+        
+        let threads = [];
+        let fates = [];
+        
+        function initThreads() {
+            threads = [];
+            const spacing = 0.8;
+            const count = Math.ceil(W / spacing);
+            
+            for (let i = 0; i < count; i++) {
+                threads.push(new Thread(i * spacing + (Math.random() - 0.5) * 0.3));
+            }
+            
+            fates = [
+                new FateThread(W * 0.2, 0),
+                new FateThread(W * 0.5, 1),
+                new FateThread(W * 0.8, 2)
+            ];
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        // ═══════════════════════════════════════════════════════════════
+        // SNAP EFFECT
+        // ═══════════════════════════════════════════════════════════════
+        
+        let snapIntensity = 0;
+        
+        function drawSnap() {
+            if (snapIntensity <= 0) return;
+            
+            const cx = W / 2;
+            const cy = H / 2;
+            
+            // Vertical cerulean line at snap point
+            ctx.beginPath();
+            ctx.moveTo(cx, 0);
+            ctx.lineTo(cx, H);
+            ctx.strokeStyle = `rgba(0, 163, 217, ${snapIntensity})`;
+            ctx.lineWidth = 3 * snapIntensity;
+            ctx.shadowBlur = 30 * snapIntensity;
+            ctx.shadowColor = `rgba(0, 163, 217, 1)`;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            
+            // Soft radial glow
+            const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 250);
+            grad.addColorStop(0, `rgba(0, 163, 217, ${snapIntensity * 0.25})`);
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+            
+            snapIntensity -= 0.015;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // REGIME DATA
+        // ═══════════════════════════════════════════════════════════════
+        
+        const regimes = [
+            { name: 'BITCOIN', val: 43, state: 'elevated', dir: 'INCREASING' },
+            { name: 'OIL', val: 74, state: 'stressed', dir: 'INCREASING' },
+            { name: 'COPPER', val: 84, state: 'critical', dir: 'INCREASING' },
+            { name: 'FED FUNDS', val: 0, state: 'normal', dir: 'STABLE' },
+            { name: 'HURRICANE', val: 20, state: 'normal', dir: 'DECREASING' },
+            { name: 'GEOPOLITICAL', val: 43, state: 'elevated', dir: 'INCREASING' },
+            { name: 'COVID', val: 52, state: 'elevated', dir: 'DECREASING' }
+        ];
+        
+        // Try to fetch live predictions from API
+        async function fetchPredictions() {
+            try {
+                const response = await fetch('/predictions');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        regimes.length = 0;
+                        data.forEach(r => regimes.push(r));
+                        console.log('Loaded live predictions');
+                    }
+                }
+            } catch (e) {
+                console.log('Using demo predictions');
+            }
+        }
+        fetchPredictions();
+        
+        let currentRegime = 0;
+        let phase = 'idle';
+        let phaseTimer = 0;
+
+        const colors = {
+            normal: '#7cb587',
+            elevated: '#00a3d9',
+            stressed: '#c17f59',
+            critical: '#a65d57'
+        };
+
+        function showResult() {
+            const r = regimes[currentRegime];
+            document.getElementById('regime').textContent = r.name;
+            document.getElementById('value').textContent = r.val;
+            document.getElementById('value').className = 'value ' + r.state;
+            document.getElementById('state').textContent = r.state.toUpperCase();
+            document.getElementById('state').style.color = colors[r.state];
+            const arrow = r.dir === 'INCREASING' ? '↑' : r.dir === 'DECREASING' ? '↓' : '→';
+            document.getElementById('direction').textContent = arrow + ' ' + r.dir;
+            document.getElementById('prediction').classList.add('visible');
+        }
+        
+        function hideResult() {
+            document.getElementById('prediction').classList.remove('visible');
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MAIN LOOP
+        // ═══════════════════════════════════════════════════════════════
+        
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, W, H);
+            
+            threads.forEach(t => {
+                t.update();
+                t.draw();
+            });
+            
+            fates.forEach(f => {
+                f.update();
+                f.draw();
+            });
+            
+            drawSnap();
+            
+            if (phase === 'weaving') {
+                const allConverged = fates.every(f => f.progress >= 1);
+                
+                if (allConverged) {
+                    phase = 'snapped';
+                    snapIntensity = 1;
+                    fates.forEach(f => f.active = false);
+                    phaseTimer = 0;
+                }
+            }
+            
+            if (phase === 'snapped') {
+                phaseTimer++;
+                if (phaseTimer > 60) {
+                    phase = 'showing';
+                    showResult();
+                    phaseTimer = 0;
+                }
+            }
+            
+            if (phase === 'showing') {
+                phaseTimer++;
+                if (phaseTimer > 280) {
+                    hideResult();
+                    phase = 'idle';
+                    phaseTimer = 0;
+                    
+                    currentRegime = (currentRegime + 1) % regimes.length;
+                    setTimeout(startWeave, 2000);
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        function startWeave() {
+            if (phase !== 'idle') return;
+            phase = 'weaving';
+            phaseTimer = 0;
+            
+            fates[0].startX = W * 0.15 + Math.random() * W * 0.1;
+            fates[1].startX = W * 0.45 + Math.random() * W * 0.1;
+            fates[2].startX = W * 0.75 + Math.random() * W * 0.1;
+            
+            fates.forEach(f => {
+                f.targetX = W / 2;
+                f.activate();
+            });
+        }
+
+        document.getElementById('start').addEventListener('click', function() {
+            this.classList.add('hidden');
+            setTimeout(startWeave, 800);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
