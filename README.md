@@ -18,15 +18,8 @@ The Three Fates is a predictive intelligence visualization system that forecasts
 - **GEOPOLITICAL** — Global tensions
 - **COVID** — Pandemic dynamics
 
-## The Formula
-
-**UVRK-1** (Universal Volatility Recursion Kernel):
 
 ```
-V_{t+1} = θ × V_t + (1-θ) × κ × Φ⁻¹(rank_t) + ε_t
-```
-
-Average R² = 0.947 across all validated regimes.
 
 ## The Visualization
 
